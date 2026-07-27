@@ -6,3 +6,6 @@ venv/
 *.egg-info/
 .DS_Store
 .ruff_cache/
+_frames/
+inspect_frame.png
+_make_gif.py

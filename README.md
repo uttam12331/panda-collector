@@ -4,6 +4,8 @@ A small third-person 3D game built with the [Panda3D](https://www.panda3d.org/)
 engine. Guide the panda around the field, collect all the glowing orbs before
 the timer runs out, and avoid the roaming hazards.
 
+![Gameplay](docs/gameplay.gif)
+
 It uses only the models that ship with Panda3D, so it runs anywhere with a
 single `pip install panda3d` — there are no external assets to download.
 
