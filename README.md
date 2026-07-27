@@ -41,8 +41,9 @@ Tested with Python 3.10+ and Panda3D 1.10 / 1.11.
 The project is intentionally compact but touches the core parts of a real
 Panda3D game:
 
-- **Scene graph & assets** — loading the bundled `environment`, `panda-model`,
-  `smiley` and `frowney` models and arranging them under `render`.
+- **Scene graph & assets** — a grass-textured ground (Panda3D's bundled grass
+  map on a generated card) with the `panda-model`, `smiley` and `frowney`
+  models arranged under `render`.
 - **Animated `Actor`** — the panda plays its `walk` cycle while moving and
   stops when idle.
 - **Collision system** — a `CollisionTraverser` with a `CollisionHandlerEvent`

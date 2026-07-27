@@ -27,6 +27,7 @@ from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import (
     AmbientLight,
+    CardMaker,
     ClockObject,
     CollisionHandlerEvent,
     CollisionNode,
@@ -37,6 +38,8 @@ from panda3d.core import (
     Material,
     NodePath,
     TextNode,
+    Texture,
+    TextureStage,
     Vec3,
     Vec4,
     loadPrcFileData,
@@ -83,18 +86,29 @@ class CollectorGame(ShowBase):
 
     # -- scene setup ---------------------------------------------------------
     def _build_environment(self) -> None:
-        """Load the ground/environment and add a sky colour + distance fog."""
+        """Build a large flat grass field with a sky colour and distance fog.
+
+        A flat ground keeps the player on a level surface (so the follow
+        camera never clips into hills), while the tiled grass texture that
+        ships with Panda3D keeps it looking like a real field.
+        """
         sky = (0.53, 0.70, 0.92)
         self.setBackgroundColor(*sky)
 
-        self.environ = self.loader.loadModel("models/environment")
-        self.environ.reparentTo(self.render)
-        self.environ.setScale(0.28)
-        self.environ.setPos(34, 84, 0)
+        card = CardMaker("ground")
+        card.setFrame(-200, 200, -200, 200)
+        self.ground = self.render.attachNewNode(card.generate())
+        self.ground.setP(-90)  # lay the card flat on the XY plane
+
+        grass = self.loader.loadTexture("maps/envir-ground.jpg")
+        grass.setWrapU(Texture.WMRepeat)
+        grass.setWrapV(Texture.WMRepeat)
+        self.ground.setTexture(grass)
+        self.ground.setTexScale(TextureStage.getDefault(), 32, 32)  # tile it
 
         fog = Fog("distance-fog")
         fog.setColor(*sky)
-        fog.setExpDensity(0.0028)  # subtle depth haze, not a grey-out
+        fog.setExpDensity(0.0022)  # subtle depth haze, not a grey-out
         self.render.setFog(fog)
 
     def _build_lighting(self) -> None:
@@ -234,7 +248,7 @@ class CollectorGame(ShowBase):
         self.orbs = []
         self.hazards = []
 
-    def _random_ground_pos(self, min_dist: float = 8.0) -> Vec3:
+    def _random_ground_pos(self, min_dist: float = 10.0) -> Vec3:
         """A random point on the field, at least ``min_dist`` from the centre."""
         while True:
             x = random.uniform(-FIELD_RADIUS, FIELD_RADIUS)
@@ -268,7 +282,9 @@ class CollectorGame(ShowBase):
             hazard = self.loader.loadModel("models/frowney")
             hazard.reparentTo(self.render)
             hazard.setScale(1.6)
-            hazard.setColor(1.0, 0.35, 0.35, 1)
+            hazard.setTextureOff(1)  # drop the face texture so the red is pure
+            hazard.setColor(1.0, 0.2, 0.2, 1)
+            hazard.setLightOff()  # self-lit, reads as a glowing red danger
             hazard.setPos(self._random_ground_pos(min_dist=18) + Vec3(0, 0, 3))
 
             node = CollisionNode("hazard")
@@ -348,9 +364,10 @@ class CollectorGame(ShowBase):
     def _follow_camera(self) -> None:
         """Keep the camera behind and above the player, looking at it."""
         behind = self.render.getRelativeVector(self.player, Vec3(0, -1, 0))
-        target = self.player.getPos() + behind * 16 + Vec3(0, 0, 30)
-        self.camera.setPos(self.camera.getPos() * 0.8 + target * 0.2)
-        self.camera.lookAt(self.player.getPos() + Vec3(0, 0, 2))
+        # snap directly behind and above the player so it stays centred every
+        # frame (an eased camera can lag and graze the ground toward the sky)
+        self.camera.setPos(self.player.getPos() + behind * 20 + Vec3(0, 0, 20))
+        self.camera.lookAt(self.player.getPos() + Vec3(0, 0, 3))
 
     # -- collision responses -------------------------------------------------
     def _on_orb(self, entry) -> None:
