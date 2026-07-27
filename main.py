@@ -22,6 +22,7 @@ import sys
 
 from direct.actor.Actor import Actor
 from direct.gui.OnscreenText import OnscreenText
+from direct.interval.IntervalGlobal import Sequence
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import (
@@ -32,11 +33,18 @@ from panda3d.core import (
     CollisionSphere,
     CollisionTraverser,
     DirectionalLight,
+    Fog,
+    Material,
     NodePath,
     TextNode,
     Vec3,
     Vec4,
+    loadPrcFileData,
 )
+
+# Request 4x MSAA before the window is created, for smooth edges.
+loadPrcFileData("", "framebuffer-multisample 1")
+loadPrcFileData("", "multisamples 4")
 
 # --- Tuning -----------------------------------------------------------------
 FIELD_RADIUS = 55.0          # how far from the centre the panda may roam
@@ -57,8 +65,8 @@ class CollectorGame(ShowBase):
     def __init__(self) -> None:
         super().__init__()
         self.disableMouse()  # we drive the camera ourselves
-        self.setBackgroundColor(0.06, 0.08, 0.12)
         self.clock = ClockObject.getGlobalClock()
+        self.render.setShaderAuto()  # per-pixel lighting + shadow mapping
 
         self._build_environment()
         self._build_lighting()
@@ -75,22 +83,43 @@ class CollectorGame(ShowBase):
 
     # -- scene setup ---------------------------------------------------------
     def _build_environment(self) -> None:
-        """Load the ground/environment that ships with Panda3D."""
+        """Load the ground/environment and add a sky colour + distance fog."""
+        sky = (0.53, 0.70, 0.92)
+        self.setBackgroundColor(*sky)
+
         self.environ = self.loader.loadModel("models/environment")
         self.environ.reparentTo(self.render)
         self.environ.setScale(0.28)
-        self.environ.setPos(-8, 42, 0)
+        self.environ.setPos(34, 84, 0)
+
+        fog = Fog("distance-fog")
+        fog.setColor(*sky)
+        fog.setExpDensity(0.0028)  # subtle depth haze, not a grey-out
+        self.render.setFog(fog)
 
     def _build_lighting(self) -> None:
+        """A warm key light that casts shadows, plus ambient and cool fill."""
         ambient = AmbientLight("ambient")
-        ambient.setColor(Vec4(0.45, 0.45, 0.5, 1))
+        ambient.setColor(Vec4(0.55, 0.58, 0.65, 1))
         self.render.setLight(self.render.attachNewNode(ambient))
 
         sun = DirectionalLight("sun")
-        sun.setColor(Vec4(0.9, 0.85, 0.7, 1))
+        sun.setColor(Vec4(0.95, 0.9, 0.75, 1))
+        sun.setShadowCaster(True, 2048, 2048)
+        lens = sun.getLens()
+        lens.setFilmSize(150, 150)
+        lens.setNearFar(1, 300)
         sun_np = self.render.attachNewNode(sun)
-        sun_np.setHpr(-40, -60, 0)
+        sun_np.setPos(70, -55, 90)
+        sun_np.lookAt(0, 0, 0)
         self.render.setLight(sun_np)
+
+        # cool fill from the opposite side so shadowed faces aren't pure black
+        fill = DirectionalLight("fill")
+        fill.setColor(Vec4(0.22, 0.26, 0.38, 1))
+        fill_np = self.render.attachNewNode(fill)
+        fill_np.setHpr(135, -25, 0)
+        self.render.setLight(fill_np)
 
     def _build_player(self) -> None:
         """The player is the animated panda actor from Panda3D's samples.
@@ -103,8 +132,13 @@ class CollectorGame(ShowBase):
             "models/panda-model", {"walk": "models/panda-walk4"}
         )
         self.panda.reparentTo(self.player)
-        self.panda.setScale(0.0045)
+        self.panda.setScale(0.006)
         self.panda.setH(180)  # face the same way the player node points (+Y)
+
+        shine = Material("panda-shine")
+        shine.setSpecular(Vec4(0.35, 0.35, 0.35, 1))
+        shine.setShininess(24)
+        self.panda.setMaterial(shine, 1)
         self.walking = False
 
     def _build_collision(self) -> None:
@@ -214,8 +248,13 @@ class CollectorGame(ShowBase):
             orb.reparentTo(self.render)
             orb.setScale(1.4)
             orb.setColor(0.3, 1.0, 0.6, 1)
+            orb.setLightOff()  # self-lit, so the orb reads as a glowing pickup
             orb.setPos(self._random_ground_pos() + Vec3(0, 0, 3))
             orb.hprInterval(3.0, Vec3(360, 0, 0)).loop()  # gentle spin
+            Sequence(  # pulse the glow so orbs are easy to spot
+                orb.colorScaleInterval(0.9, (1.7, 1.7, 1.7, 1), blendType="easeInOut"),
+                orb.colorScaleInterval(0.9, (1.0, 1.0, 1.0, 1), blendType="easeInOut"),
+            ).loop()
 
             node = CollisionNode("orb")
             node.addSolid(CollisionSphere(0, 0, 0, ORB_RADIUS))
@@ -309,9 +348,9 @@ class CollectorGame(ShowBase):
     def _follow_camera(self) -> None:
         """Keep the camera behind and above the player, looking at it."""
         behind = self.render.getRelativeVector(self.player, Vec3(0, -1, 0))
-        target = self.player.getPos() + behind * 26 + Vec3(0, 0, 15)
-        self.camera.setPos(self.camera.getPos() * 0.85 + target * 0.15)
-        self.camera.lookAt(self.player.getPos() + Vec3(0, 0, 4))
+        target = self.player.getPos() + behind * 16 + Vec3(0, 0, 30)
+        self.camera.setPos(self.camera.getPos() * 0.8 + target * 0.2)
+        self.camera.lookAt(self.player.getPos() + Vec3(0, 0, 2))
 
     # -- collision responses -------------------------------------------------
     def _on_orb(self, entry) -> None:
